@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NinjaTrader Iteration Lab</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div>
+          <div class="eyebrow">Workspace</div>
+          <h1>Iteration Lab</h1>
+        </div>
+        <button id="new-session" class="secondary-btn">New</button>
+      </div>
+      <div id="session-list" class="session-list"></div>
+    </aside>
+
+    <main class="main">
+      <section class="toolbar">
+        <div class="toolbar-group">
+          <label>
+            <span>Model</span>
+            <select id="model"></select>
+          </label>
+          <label>
+            <span>Embed</span>
+            <input id="embed-model" value="nomic-embed-text">
+          </label>
+          <label>
+            <span>Top K</span>
+            <input id="top-k" type="number" min="1" max="20" value="8">
+          </label>
+          <label>
+            <span>Temp</span>
+            <input id="temperature" type="number" min="0" max="1" step="0.05" value="0.1">
+          </label>
+        </div>
+        <div class="toolbar-group">
+          <label class="path-field">
+            <span>Save To</span>
+            <input id="output-path" placeholder=".\MyCoolStrat.cs">
+          </label>
+          <label class="path-field">
+            <span>Compiler CSV</span>
+            <input id="compiler-csv-path" placeholder=".\compile_errors.csv">
+          </label>
+          <button id="save-code" class="secondary-btn">Save Code</button>
+          <button id="load-csv" class="secondary-btn">Load CSV</button>
+          <button id="repair-csv" class="secondary-btn">Repair From CSV</button>
+          <button id="export-training" class="secondary-btn">Export Training Set</button>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <div class="input-band">
+          <div class="field">
+            <div class="field-header">
+              <label for="task">Task</label>
+              <button id="generate" class="primary-btn">Generate</button>
+            </div>
+            <textarea id="task" placeholder="Describe the strategy or indicator you want."></textarea>
+          </div>
+          <div class="field">
+            <div class="field-header">
+              <label for="compiler-errors">Compiler Errors</label>
+            </div>
+            <textarea id="compiler-errors" placeholder="Paste NinjaTrader compiler errors here when a build fails."></textarea>
+          </div>
+        </div>
+
+        <div class="code-band">
+          <div class="field-header">
+            <label for="existing-code">Current Code</label>
+          </div>
+          <textarea id="existing-code" class="code-editor" spellcheck="false" placeholder="Existing or generated NinjaScript code."></textarea>
+        </div>
+
+        <div class="review-band">
+          <div class="toolbar-group">
+            <label class="notes-field">
+              <span>Review Notes</span>
+              <input id="label-notes" placeholder="Why this was good or what failed.">
+            </label>
+            <button id="mark-good" class="good-btn">Save Good</button>
+            <button id="mark-bad" class="bad-btn">Save Bad</button>
+          </div>
+          <div id="status" class="status">Ready.</div>
+        </div>
+
+        <div class="output-grid">
+          <section class="output-panel">
+            <div class="panel-header">
+              <h2>Assistant</h2>
+              <div id="iteration-meta" class="meta"></div>
+            </div>
+            <pre id="answer" class="answer"></pre>
+          </section>
+
+          <section class="output-panel">
+            <div class="panel-header">
+              <h2>Retrieved Sources</h2>
+            </div>
+            <div id="sources" class="sources"></div>
+          </section>
+        </div>
+
+        <section class="history-band">
+          <div class="panel-header">
+            <h2>Iteration History</h2>
+            <div class="toolbar-group">
+              <label>
+                <span>Compare To</span>
+                <select id="compare-iteration"></select>
+              </label>
+              <button id="view-diff" class="secondary-btn">View Diff</button>
+            </div>
+          </div>
+          <div id="history" class="history"></div>
+        </section>
+
+        <section class="history-band">
+          <div class="panel-header">
+            <h2>Code Diff</h2>
+          </div>
+          <pre id="diff-output" class="answer"></pre>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
