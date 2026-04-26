@@ -3,7 +3,11 @@ const state = {
   currentSessionId: null,
   currentIterationId: null,
   currentIterations: [],
+  latestCompilerSignature: "",
+  watchTimer: null,
 };
+
+const WATCH_INTERVAL_MS = 10000;
 
 const el = {
   sessionList: document.getElementById("session-list"),
@@ -13,6 +17,8 @@ const el = {
   topK: document.getElementById("top-k"),
   temperature: document.getElementById("temperature"),
   outputPath: document.getElementById("output-path"),
+  compilerFolderPath: document.getElementById("compiler-folder-path"),
+  compilerPattern: document.getElementById("compiler-pattern"),
   compilerCsvPath: document.getElementById("compiler-csv-path"),
   task: document.getElementById("task"),
   compilerErrors: document.getElementById("compiler-errors"),
@@ -20,8 +26,11 @@ const el = {
   labelNotes: document.getElementById("label-notes"),
   generate: document.getElementById("generate"),
   saveCode: document.getElementById("save-code"),
+  findLatestCsv: document.getElementById("find-latest-csv"),
   loadCsv: document.getElementById("load-csv"),
+  repairLatest: document.getElementById("repair-latest"),
   repairCsv: document.getElementById("repair-csv"),
+  autoWatchCsv: document.getElementById("auto-watch-csv"),
   exportTraining: document.getElementById("export-training"),
   markGood: document.getElementById("mark-good"),
   markBad: document.getElementById("mark-bad"),
@@ -49,6 +58,32 @@ async function api(path, options = {}) {
 
 function setStatus(message) {
   el.status.textContent = message;
+}
+
+function persistWorkspaceSettings() {
+  const payload = {
+    compilerFolderPath: el.compilerFolderPath.value,
+    compilerPattern: el.compilerPattern.value,
+    compilerCsvPath: el.compilerCsvPath.value,
+    autoWatchCsv: el.autoWatchCsv.checked,
+  };
+  window.localStorage.setItem("ninjatrader-iteration-lab-settings", JSON.stringify(payload));
+}
+
+function restoreWorkspaceSettings() {
+  const raw = window.localStorage.getItem("ninjatrader-iteration-lab-settings");
+  if (!raw) {
+    return;
+  }
+  try {
+    const payload = JSON.parse(raw);
+    el.compilerFolderPath.value = payload.compilerFolderPath || "";
+    el.compilerPattern.value = payload.compilerPattern || "*.csv";
+    el.compilerCsvPath.value = payload.compilerCsvPath || "";
+    el.autoWatchCsv.checked = Boolean(payload.autoWatchCsv);
+  } catch (_error) {
+    // Ignore malformed local settings and continue with defaults.
+  }
 }
 
 function badgeClass(label) {
@@ -199,16 +234,7 @@ async function generate() {
     return;
   }
   setStatus("Generating...");
-  const payload = {
-    task: el.task.value,
-    existing_code: el.existingCode.value,
-    compiler_errors: el.compilerErrors.value,
-    model: el.model.value,
-    embed_model: el.embedModel.value,
-    top_k: Number(el.topK.value),
-    temperature: Number(el.temperature.value),
-    output_path: el.outputPath.value,
-  };
+  const payload = buildGenerationPayload();
   const iteration = await api(`/api/sessions/${state.currentSessionId}/generate`, {
     method: "POST",
     body: JSON.stringify(payload),
@@ -281,6 +307,8 @@ async function loadCompilerCsv() {
   const path = encodeURIComponent(el.compilerCsvPath.value.trim());
   const loaded = await api(`/api/compiler-errors/load?path=${path}`);
   el.compilerErrors.value = loaded.text || "";
+  state.latestCompilerSignature = `${loaded.path}|${loaded.modified_at || ""}`;
+  persistWorkspaceSettings();
   setStatus(`Loaded ${loaded.count} compiler errors from ${loaded.path}.`);
 }
 
@@ -293,19 +321,13 @@ async function repairFromCsv() {
     return;
   }
   setStatus("Repairing from compiler CSV...");
-  const payload = {
+  const payload = buildGenerationPayload({
     task:
       el.task.value.trim() ||
       "Fix this NinjaTrader script so it compiles and preserves the intended behavior.",
-    existing_code: el.existingCode.value,
     compiler_errors: "",
     compiler_errors_csv_path: el.compilerCsvPath.value.trim(),
-    model: el.model.value,
-    embed_model: el.embedModel.value,
-    top_k: Number(el.topK.value),
-    temperature: Number(el.temperature.value),
-    output_path: el.outputPath.value,
-  };
+  });
   const iteration = await api(`/api/sessions/${state.currentSessionId}/generate`, {
     method: "POST",
     body: JSON.stringify(payload),
@@ -316,6 +338,99 @@ async function repairFromCsv() {
   renderCompareOptions();
   await refreshSessions();
   setStatus(`Generated repair iteration ${iteration.id} from compiler CSV.`);
+}
+
+function buildGenerationPayload(overrides = {}) {
+  return {
+    task: el.task.value,
+    existing_code: el.existingCode.value,
+    compiler_errors: el.compilerErrors.value,
+    model: el.model.value,
+    embed_model: el.embedModel.value,
+    top_k: Number(el.topK.value),
+    temperature: Number(el.temperature.value),
+    output_path: el.outputPath.value,
+    ...overrides,
+  };
+}
+
+async function findLatestCompilerCsv(options = {}) {
+  if (!el.compilerFolderPath.value.trim()) {
+    throw new Error("Enter a compiler folder first.");
+  }
+
+  const folder = encodeURIComponent(el.compilerFolderPath.value.trim());
+  const pattern = encodeURIComponent(el.compilerPattern.value.trim() || "*.csv");
+  const latest = await api(`/api/compiler-errors/latest?folder=${folder}&pattern=${pattern}`);
+  const signature = `${latest.path}|${latest.modified_at || ""}`;
+  const changed = signature !== state.latestCompilerSignature;
+
+  if (!options.onlyWhenChanged || changed) {
+    el.compilerCsvPath.value = latest.path;
+    if (options.populateErrors) {
+      el.compilerErrors.value = latest.text || "";
+    }
+    state.latestCompilerSignature = signature;
+    persistWorkspaceSettings();
+  }
+
+  if (!options.quiet || changed) {
+    const detail = changed ? `Loaded ${latest.count} errors from newest CSV.` : "Latest compiler CSV is unchanged.";
+    setStatus(`${detail} ${latest.path}`);
+  }
+
+  return { ...latest, changed };
+}
+
+async function repairLatest() {
+  if (!state.currentSessionId) {
+    return;
+  }
+  setStatus("Finding latest compiler CSV...");
+  const latest = await findLatestCompilerCsv({ populateErrors: true, quiet: true });
+  const payload = buildGenerationPayload({
+    task:
+      el.task.value.trim() ||
+      "Fix this NinjaTrader script so it compiles and preserves the intended behavior.",
+    compiler_errors: "",
+    compiler_errors_csv_path: latest.path,
+  });
+  const iteration = await api(`/api/sessions/${state.currentSessionId}/generate`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  state.currentIterations.push(iteration);
+  renderIteration(iteration);
+  renderHistory();
+  renderCompareOptions();
+  await refreshSessions();
+  setStatus(`Generated repair iteration ${iteration.id} from latest compiler CSV.`);
+}
+
+function stopCsvWatch() {
+  if (state.watchTimer) {
+    window.clearInterval(state.watchTimer);
+    state.watchTimer = null;
+  }
+}
+
+function startCsvWatch() {
+  stopCsvWatch();
+  if (!el.autoWatchCsv.checked) {
+    return;
+  }
+
+  const poll = () =>
+    findLatestCompilerCsv({ populateErrors: true, quiet: true, onlyWhenChanged: true }).catch(() => {});
+
+  poll();
+  state.watchTimer = window.setInterval(poll, WATCH_INTERVAL_MS);
+}
+
+function handleWatchToggle() {
+  persistWorkspaceSettings();
+  startCsvWatch();
+  setStatus(el.autoWatchCsv.checked ? "Auto-watch enabled for latest compiler CSV." : "Auto-watch stopped.");
 }
 
 async function viewDiff() {
@@ -378,10 +493,21 @@ el.generate.addEventListener("click", () => generate().catch((error) => setStatu
 el.markGood.addEventListener("click", () => markIteration("good").catch((error) => setStatus(error.message)));
 el.markBad.addEventListener("click", () => markIteration("bad").catch((error) => setStatus(error.message)));
 el.saveCode.addEventListener("click", () => saveCode().catch((error) => setStatus(error.message)));
+el.findLatestCsv.addEventListener("click", () =>
+  findLatestCompilerCsv({ populateErrors: true }).catch((error) => setStatus(error.message))
+);
 el.loadCsv.addEventListener("click", () => loadCompilerCsv().catch((error) => setStatus(error.message)));
+el.repairLatest.addEventListener("click", () => repairLatest().catch((error) => setStatus(error.message)));
 el.repairCsv.addEventListener("click", () => repairFromCsv().catch((error) => setStatus(error.message)));
 el.viewDiff.addEventListener("click", () => viewDiff().catch((error) => setStatus(error.message)));
 el.exportTraining.addEventListener("click", () => exportTraining().catch((error) => setStatus(error.message)));
 el.newSession.addEventListener("click", () => createSession().catch((error) => setStatus(error.message)));
+el.compilerFolderPath.addEventListener("change", persistWorkspaceSettings);
+el.compilerPattern.addEventListener("change", persistWorkspaceSettings);
+el.compilerCsvPath.addEventListener("change", persistWorkspaceSettings);
+el.autoWatchCsv.addEventListener("change", handleWatchToggle);
 
-Promise.all([loadModels(), loadSessions()]).catch((error) => setStatus(error.message));
+restoreWorkspaceSettings();
+Promise.all([loadModels(), loadSessions()])
+  .then(() => startCsvWatch())
+  .catch((error) => setStatus(error.message));

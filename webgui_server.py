@@ -226,6 +226,31 @@ def load_compiler_errors_csv(csv_path_text: str) -> dict:
     return {"path": str(csv_path), "count": len(rows), "rows": rows, "text": text}
 
 
+def find_latest_compiler_csv(folder_path_text: str, pattern: str = "*.csv") -> dict:
+    folder = resolve_user_path(folder_path_text)
+    if not folder.exists():
+        raise FileNotFoundError(f"Compiler folder not found: {folder}")
+    if not folder.is_dir():
+        raise NotADirectoryError(f"Compiler folder is not a directory: {folder}")
+
+    pattern = pattern.strip() or "*.csv"
+    candidates = [path for path in folder.rglob(pattern) if path.is_file()]
+    if not candidates:
+        raise FileNotFoundError(f"No compiler CSV files matched {pattern!r} in {folder}")
+
+    latest = max(candidates, key=lambda item: (item.stat().st_mtime, str(item).lower()))
+    loaded = load_compiler_errors_csv(str(latest))
+    loaded.update(
+        {
+            "folder": str(folder),
+            "pattern": pattern,
+            "candidate_count": len(candidates),
+            "modified_at": datetime.fromtimestamp(latest.stat().st_mtime).isoformat(timespec="seconds"),
+        }
+    )
+    return loaded
+
+
 def diff_iterations(left_iteration_id: int, right_iteration_id: int) -> dict:
     left = get_iteration(left_iteration_id)
     right = get_iteration(right_iteration_id)
@@ -550,6 +575,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             csv_path = query.get("path", [""])[0]
             try:
                 return self.write_json(load_compiler_errors_csv(csv_path))
+            except Exception as exc:
+                return self.write_error_json(exc)
+        if parsed.path == "/api/compiler-errors/latest":
+            query = parse_qs(parsed.query)
+            folder_path = query.get("folder", [""])[0]
+            pattern = query.get("pattern", ["*.csv"])[0]
+            try:
+                return self.write_json(find_latest_compiler_csv(folder_path, pattern))
             except Exception as exc:
                 return self.write_error_json(exc)
         if parsed.path.startswith("/api/iterations/") and parsed.path.endswith("/diff"):

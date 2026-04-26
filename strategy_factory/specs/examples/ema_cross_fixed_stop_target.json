@@ -1,0 +1,93 @@
+{
+  "schema_version": "0.1",
+  "strategy": {
+    "id": "EmaCrossFixedStopTarget",
+    "name": "EMA Cross Fixed Stop Target",
+    "hypothesis": "A short fast EMA crossing a slower EMA can capture directional momentum during the morning session.",
+    "version": "0.1",
+    "source_prompt": "EMA 9/21 crossover, both directions, 20 tick stop, 40 tick target, fixed 1 contract, trade 08:30-11:30 America/Denver, on bar close, max 3 trades/day."
+  },
+  "market": {
+    "instrument": "NQ",
+    "contract": "06-26",
+    "timeframe": "1m",
+    "tick_size": 0.25,
+    "tick_value": 5.0
+  },
+  "data": {
+    "calculation": "on_bar_close",
+    "lookback_bars": 50
+  },
+  "direction": "both",
+  "entries": [
+    {
+      "id": "entry_ema_9_21",
+      "type": "ema_cross",
+      "timing": "next_open",
+      "params": {
+        "fast_type": "ema",
+        "fast_period": 9,
+        "slow_type": "ema",
+        "slow_period": 21
+      }
+    }
+  ],
+  "filters": [
+    {
+      "type": "time_window",
+      "params": {
+        "session_start": "08:30:00",
+        "session_end": "11:30:00",
+        "timezone": "America/Denver"
+      }
+    }
+  ],
+  "exits": {
+    "stop": {
+      "type": "fixed_ticks",
+      "ticks": 20
+    },
+    "target": {
+      "type": "fixed_ticks",
+      "ticks": 40
+    },
+    "max_hold_bars": 20,
+    "flatten_on_session_end": true,
+    "partial": {
+      "enabled": false
+    },
+    "runner": {
+      "enabled": false
+    }
+  },
+  "sizing": {
+    "type": "fixed_contracts",
+    "contracts": 1,
+    "max_contracts": 1
+  },
+  "risk": {
+    "max_trades_per_day": 3,
+    "use_soft_pnl_lock": true,
+    "soft_profit_stop": 10000.0,
+    "soft_loss_stop": 10000.0,
+    "use_hard_kill": false,
+    "hard_kill_profit": 800.0,
+    "hard_kill_loss": 400.0,
+    "max_consecutive_losses": 2,
+    "cooldown_bars_after_loss": 5
+  },
+  "execution": {
+    "python_bridge": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 8766
+    },
+    "ninjascript": {
+      "order_mode": "managed",
+      "calculate": "OnBarClose"
+    }
+  },
+  "metadata": {
+    "created_for": "initial_strategy_factory_slice"
+  }
+}

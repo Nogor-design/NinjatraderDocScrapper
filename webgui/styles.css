@@ -139,6 +139,12 @@ button {
   font: inherit;
 }
 
+input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 input,
 select,
 textarea {

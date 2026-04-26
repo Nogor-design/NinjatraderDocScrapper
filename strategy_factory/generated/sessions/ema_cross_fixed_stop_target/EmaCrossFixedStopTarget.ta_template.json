@@ -1,0 +1,86 @@
+{
+  "template_name": "EmaCrossFixedStopTarget",
+  "hypothesis": "A short fast EMA crossing a slower EMA can capture directional momentum during the morning session.",
+  "version": "0.1",
+  "instrument": "NQ",
+  "contract": "06-26",
+  "timeframe": "1m",
+  "direction": "both",
+  "entry_signal": {
+    "type": "ma_cross",
+    "fast_type": "ema",
+    "fast_period": 9,
+    "slow_type": "ema",
+    "slow_period": 21,
+    "timing": "next_open"
+  },
+  "ledger_rules": {
+    "entry_reason": "entry_ema_9_21",
+    "price_basis_column": "close"
+  },
+  "entry_filters": [],
+  "stop_mode": "fixed_ticks",
+  "hard_stop_ticks_cap": 20,
+  "initial_target_ticks": 40,
+  "partial_rules": {
+    "enabled": false,
+    "partial_size_pct": 50,
+    "partial_target_ticks": 40,
+    "move_stop_to_break_even_after_partial": true
+  },
+  "runner_rules": {
+    "enabled": false,
+    "trail_mode": "none",
+    "atr_multiple": 1.8,
+    "runner_size_pct": 50
+  },
+  "session_rules": {
+    "enabled": true,
+    "session_start": "08:30:00",
+    "session_end": "11:30:00",
+    "timezone": "America/Denver"
+  },
+  "risk_rules": {
+    "max_trades_per_day": 3,
+    "use_soft_pnl_lock": true,
+    "soft_profit_stop": 10000.0,
+    "soft_loss_stop": 10000.0,
+    "use_hard_kill": false,
+    "hard_kill_profit": 800.0,
+    "hard_kill_loss": 400.0
+  },
+  "max_hold_bars": 20,
+  "flatten_on_session_end": true,
+  "factory_metadata": {
+    "schema_version": "0.1",
+    "strategy_id": "EmaCrossFixedStopTarget",
+    "source_prompt": "EMA 9/21 crossover, both directions, 20 tick stop, 40 tick target, fixed 1 contract, trade 08:30-11:30 America/Denver, on bar close, max 3 trades/day.",
+    "risk": {
+      "max_trades_per_day": 3,
+      "use_soft_pnl_lock": true,
+      "soft_profit_stop": 10000.0,
+      "soft_loss_stop": 10000.0,
+      "use_hard_kill": false,
+      "hard_kill_profit": 800.0,
+      "hard_kill_loss": 400.0,
+      "max_consecutive_losses": 2,
+      "cooldown_bars_after_loss": 5
+    },
+    "sizing": {
+      "type": "fixed_contracts",
+      "contracts": 1,
+      "max_contracts": 1
+    },
+    "execution": {
+      "python_bridge": {
+        "enabled": true,
+        "host": "127.0.0.1",
+        "port": 8766
+      },
+      "ninjascript": {
+        "order_mode": "managed",
+        "calculate": "OnBarClose"
+      }
+    }
+  }
+}

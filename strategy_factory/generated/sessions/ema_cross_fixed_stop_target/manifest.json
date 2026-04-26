@@ -1,0 +1,10 @@
+{
+  "strategy_id": "EmaCrossFixedStopTarget",
+  "source_spec": "strategy_factory\\specs\\examples\\ema_cross_fixed_stop_target.json",
+  "outputs": {
+    "normalized_spec": "strategy_factory\\generated\\sessions\\ema_cross_fixed_stop_target\\EmaCrossFixedStopTarget.strategy_spec.normalized.json",
+    "ta_foundation_template": "strategy_factory\\generated\\sessions\\ema_cross_fixed_stop_target\\EmaCrossFixedStopTarget.ta_template.json",
+    "ninjascript": "strategy_factory\\generated\\sessions\\ema_cross_fixed_stop_target\\EmaCrossFixedStopTarget.cs",
+    "ninjascript_template": "strategy_factory\\generated\\sessions\\ema_cross_fixed_stop_target\\EmaCrossFixedStopTargetTemplate.xml"
+  }
+}

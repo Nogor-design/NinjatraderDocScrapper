@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.ninjatrader.strategy-factory/schemas/strategy_spec.schema.json",
+  "title": "Strategy Factory Canonical Strategy Spec",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "strategy",
+    "market",
+    "direction",
+    "entries",
+    "exits",
+    "sizing",
+    "risk"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1"
+    },
+    "strategy": {
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hypothesis": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "source_prompt": {
+          "type": "string"
+        }
+      }
+    },
+    "market": {
+      "type": "object",
+      "required": ["instrument", "timeframe", "tick_size", "tick_value"],
+      "additionalProperties": true,
+      "properties": {
+        "instrument": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contract": {
+          "type": "string"
+        },
+        "timeframe": {
+          "type": "string",
+          "enum": ["1m", "3m", "5m", "10m", "15m", "30m", "1h"]
+        },
+        "tick_size": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "tick_value": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "calculation": {
+          "type": "string",
+          "enum": ["on_bar_close", "on_each_tick"]
+        },
+        "lookback_bars": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "direction": {
+      "type": "string",
+      "enum": ["long", "short", "both"]
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "params"],
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": ["ema_cross", "sma_cross", "ma_cross", "large_candle_reversal", "opening_range_breakout", "rsi_threshold", "price_level"]
+          },
+          "timing": {
+            "type": "string",
+            "enum": ["next_open", "break_extreme", "body_midpoint"]
+          },
+          "params": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "filters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "params"],
+        "additionalProperties": true,
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "exits": {
+      "type": "object",
+      "required": ["stop", "target"],
+      "additionalProperties": true,
+      "properties": {
+        "stop": {
+          "type": "object",
+          "required": ["type", "ticks"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["fixed_ticks", "atr_based", "signal_extreme_capped"]
+            },
+            "ticks": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "target": {
+          "type": "object",
+          "required": ["type", "ticks"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["fixed_ticks", "r_multiple"]
+            },
+            "ticks": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "max_hold_bars": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "flatten_on_session_end": {
+          "type": "boolean"
+        },
+        "partial": {
+          "type": "object"
+        },
+        "runner": {
+          "type": "object"
+        }
+      }
+    },
+    "sizing": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["fixed_contracts", "risk_per_trade", "atr_based"]
+        },
+        "contracts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_contracts": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "max_trades_per_day": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "use_soft_pnl_lock": {
+          "type": "boolean"
+        },
+        "soft_profit_stop": {
+          "type": "number",
+          "minimum": 0
+        },
+        "soft_loss_stop": {
+          "type": "number",
+          "minimum": 0
+        },
+        "use_hard_kill": {
+          "type": "boolean"
+        },
+        "hard_kill_profit": {
+          "type": "number",
+          "minimum": 0
+        },
+        "hard_kill_loss": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_daily_loss": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_daily_profit": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_consecutive_losses": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cooldown_bars_after_loss": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

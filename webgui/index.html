@@ -45,12 +45,26 @@
             <input id="output-path" placeholder=".\MyCoolStrat.cs">
           </label>
           <label class="path-field">
+            <span>Compiler Folder</span>
+            <input id="compiler-folder-path" placeholder="C:\Path\To\NinjaTrader\CompileOutput">
+          </label>
+          <label>
+            <span>Pattern</span>
+            <input id="compiler-pattern" value="*.csv">
+          </label>
+          <label class="path-field">
             <span>Compiler CSV</span>
             <input id="compiler-csv-path" placeholder=".\compile_errors.csv">
           </label>
           <button id="save-code" class="secondary-btn">Save Code</button>
+          <button id="find-latest-csv" class="secondary-btn">Find Latest CSV</button>
           <button id="load-csv" class="secondary-btn">Load CSV</button>
+          <button id="repair-latest" class="secondary-btn">Repair Latest</button>
           <button id="repair-csv" class="secondary-btn">Repair From CSV</button>
+          <label>
+            <span>Watch</span>
+            <input id="auto-watch-csv" type="checkbox">
+          </label>
           <button id="export-training" class="secondary-btn">Export Training Set</button>
         </div>
       </section>

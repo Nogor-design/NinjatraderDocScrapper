@@ -74,6 +74,9 @@ The GUI is designed for the workflow that matters here:
 - keep a continuing session for one strategy
 - paste compiler errors back into the same thread
 - load compiler errors directly from NinjaTrader's CSV output
+- point the GUI at a compiler-output folder and discover the newest CSV automatically
+- repair directly from the newest compiler CSV in that folder
+- optionally auto-watch the folder so fresh compiler errors appear without retyping paths
 - trigger a repair pass straight from the compiler CSV
 - save generated code directly to a `.cs` path
 - compare two iterations with a code diff
