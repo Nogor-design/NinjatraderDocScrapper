@@ -5,7 +5,7 @@ import html
 from pathlib import Path
 from typing import Any
 
-from strategy_factory.generators.ninjascript_generator import _class_name, _session_time, _single_entry
+from strategy_factory.generators.ninjascript_generator import _class_name, _session_time, _single_entry, _trend_filters
 from strategy_factory.specs.validator import load_strategy_spec, normalize_strategy_spec
 
 
@@ -44,6 +44,8 @@ def generate_ninjascript_template_xml(spec: dict[str, Any], *, template_name: st
         "StartTime": int(_session_time(normalized.get("filters", []), "session_start", "083000")),
         "EndTime": int(_session_time(normalized.get("filters", []), "session_end", "113000")),
     }
+    for index, item in enumerate(_trend_filters(normalized.get("filters", [])), start=1):
+        strategy_params[f"TrendPeriod{index}"] = int((item.get("params") or {}).get("period", 50))
 
     optimization_parameters = "\n".join(
         _optimization_parameter_xml(param_name, value) for param_name, value in strategy_params.items()

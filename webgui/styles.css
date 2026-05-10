@@ -43,6 +43,7 @@ body {
 .input-band,
 .code-band,
 .review-band,
+.compile-loop-band,
 .history-band {
   padding: 16px 18px;
 }
@@ -225,6 +226,7 @@ button {
 
 .code-band,
 .review-band,
+.compile-loop-band,
 .history-band {
   border-bottom: 1px solid var(--border);
   background: var(--surface);
@@ -250,6 +252,43 @@ button {
 .status {
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.compile-controls {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.compile-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summary-item {
+  min-width: 0;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.summary-item span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.summary-item strong {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .output-grid {
@@ -351,7 +390,8 @@ button {
   }
 
   .input-band,
-  .output-grid {
+  .output-grid,
+  .compile-summary {
     grid-template-columns: 1fr;
   }
 

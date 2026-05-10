@@ -1,0 +1,23 @@
+[project]
+name = "ninjatrader-doc-scrapper"
+version = "0.1.0"
+description = "Local NinjaTrader documentation RAG and deterministic strategy factory tooling."
+requires-python = ">=3.11"
+dependencies = [
+  "beautifulsoup4>=4.12",
+  "playwright>=1.40",
+  "requests>=2.31",
+]
+
+[tool.setuptools]
+packages = [
+  "strategy_factory",
+  "strategy_factory.compile_loop",
+  "strategy_factory.generators",
+  "strategy_factory.parity",
+  "strategy_factory.specs",
+]
+
+[tool.unittest]
+start-directory = "tests"
+pattern = "test_*.py"

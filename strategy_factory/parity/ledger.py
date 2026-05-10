@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Iterable
 
@@ -19,6 +19,7 @@ class StrategyLedgerEvent:
     target_ticks: int | None = None
     quantity: int | None = None
     source: str = ""
+    metadata: dict[str, str] = field(default_factory=dict)
 
 
 def read_jsonl_ledger(path: str | Path) -> list[StrategyLedgerEvent]:
@@ -26,7 +27,8 @@ def read_jsonl_ledger(path: str | Path) -> list[StrategyLedgerEvent]:
     for line in Path(path).read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
-        events.append(StrategyLedgerEvent(**json.loads(line)))
+        payload = json.loads(line)
+        events.append(StrategyLedgerEvent(**payload))
     return events
 
 
@@ -100,6 +102,8 @@ def write_csv_ledger(path: str | Path, events: Iterable[StrategyLedgerEvent]) ->
     out_path = Path(path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     rows = [asdict(event) for event in events]
+    for row in rows:
+        row["metadata"] = json.dumps(row["metadata"], separators=(",", ":"))
     fieldnames = list(StrategyLedgerEvent.__dataclass_fields__.keys())
     with out_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -122,6 +126,17 @@ def _parse_sf_ledger_line(line: str, *, fallback_strategy_id: str, source: str) 
     detail = _parse_detail(line.split("|")[1:])
     if "event" not in detail or "timestamp" not in detail:
         return None
+    known_fields = {
+        "strategy_id",
+        "timestamp",
+        "event",
+        "reason",
+        "price_basis",
+        "bar_index",
+        "stop_ticks",
+        "target_ticks",
+        "quantity",
+    }
     return StrategyLedgerEvent(
         strategy_id=detail.get("strategy_id", fallback_strategy_id),
         timestamp=detail["timestamp"],
@@ -133,6 +148,7 @@ def _parse_sf_ledger_line(line: str, *, fallback_strategy_id: str, source: str) 
         target_ticks=_int_or_none(detail.get("target_ticks")),
         quantity=_int_or_none(detail.get("quantity")),
         source=source,
+        metadata={key: value for key, value in detail.items() if key not in known_fields},
     )
 
 

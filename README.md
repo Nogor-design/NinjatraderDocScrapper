@@ -55,6 +55,29 @@ The best first version is RAG, not fine-tuning. Fine-tuning teaches style and re
 
 6. Feed compiler errors back into the model along with the generated code and the retrieved documentation chunks. This gives you a practical repair loop even though the model cannot compile NinjaScript directly.
 
+## Batch Strategy Factory
+
+If you have a folder of canonical strategy specs (JSON), you can process them all at once, generate their C# and XML Template files, and install them into NinjaTrader:
+
+```powershell
+.\.venv\Scripts\python.exe .\batch_factory_run.py `
+  --input .\strategy_factory\specs\examples `
+  --out-dir .\strategy_factory\generated\batch_run `
+  --overwrite
+```
+
+This is also available in the **Web GUI** under the "Batch Strategy Factory" panel.
+
+## Auto-Save Results
+
+Generated NinjaTrader strategies now include an **Auto-Save** feature. When a backtest or realtime session ends (reaches `State.Terminated`), the strategy automatically exports a summary CSV containing key performance metrics (Net Profit, Profit Factor, Total Trades, etc.) to:
+
+```text
+C:\ta_foundation\nt_results\{StrategyName}_{Instrument}_{Timestamp}.csv
+```
+
+This satisfies the requirement to "auto save" results without manual intervention in the Strategy Analyzer.
+
 ## Web GUI
 
 For iterative review, use the local web GUI:
@@ -86,17 +109,20 @@ The GUI is designed for the workflow that matters here:
 
 ## Prompt Contract
 
-Use a fixed system prompt for NinjaScript generation:
+Use a fixed system prompt for NinjaScript generation (refer to `LLM_DOCUMENTATION_GUIDE.md` for the full specification):
 
 ```text
 You are writing NinjaTrader 8 NinjaScript C#.
 Use only APIs supported by the retrieved NinjaTrader documentation.
-Before code, list the retrieved docs you relied on.
+Refer to LLM_DOCUMENTATION_GUIDE.md for detailed architectural and coding standards.
+Before the code, briefly list the documentation pages you relied on.
+
 When writing indicators or strategies:
 - Use OnStateChange for lifecycle setup.
 - Use State.SetDefaults only for defaults and UI-facing properties.
 - Use State.Configure for AddDataSeries calls.
-- Create indicators and other bars-dependent resources in State.DataLoaded.
+- Create indicator instances and other bars-dependent resources in State.DataLoaded unless documentation requires otherwise.
+- For Optimization tasks, prioritize 'References Optimizer' and 'References Optimization Fitness'.
 - Guard BarsInProgress and CurrentBar/CurrentBars when using series.
 - Do not invent NinjaTrader methods, properties, namespaces, or enum values.
 - If the docs do not prove an API exists, say what is missing instead of guessing.
@@ -149,3 +175,70 @@ For focused strategy and indicator material:
   Runs a local browser-based review UI with sessions, compiler-error feedback, direct file saves, and good/bad labeling.
 - `ollama_rag.py`
   Shared helpers for Ollama HTTP calls, vector normalization, SQLite access, and source formatting.
+
+## Strategy Factory Development
+
+The controlled generation path lives in `strategy_factory/`. Start there for new
+strategy work. The factory uses a canonical JSON spec and emits ta_foundation
+template JSON, NinjaTrader strategy code, and NinjaTrader StrategyTemplate XML.
+
+Run the local test suite before changing generation behavior:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+```
+
+Retrieve local context from module cards, skeletons, examples, and labeled
+iteration artifacts without requiring Ollama:
+
+```powershell
+.\.venv\Scripts\python.exe -m strategy_factory.retrieval `
+  --spec .\strategy_factory\specs\examples\ema_cross_fixed_stop_target.json
+```
+
+Review an existing NinjaTrader strategy before asking the repair loop to change
+it:
+
+```powershell
+.\.venv\Scripts\python.exe -m strategy_factory.review .\bollingerTestStrat.cs
+```
+
+The first expanded deterministic branch supports MA crossover specs with an
+optional `moving_average_trend` / `trend` filter. See:
+
+- `strategy_factory\modules\filters\moving_average_trend.md`
+- `strategy_factory\specs\examples\ema_cross_trend_filter.json`
+
+For cross-chat continuity, read `docs/PROJECT_HANDOFF.md` first in future
+threads. It records the architecture, external project links, commands, current
+constraints, and next recommended development step.
+
+## NinjaTrader Compile Loop
+
+The first compile loop uses a semi-automated folder contract. Codex installs the
+strategy file, NinjaTrader auto-compiles while the editor is open, and exported
+compiler errors are normalized for repair.
+
+Full notes: `docs\COMPILE_LOOP.md`
+
+Create folders:
+
+```powershell
+.\.venv\Scripts\python.exe -m strategy_factory.compile_loop.paths
+```
+
+Install a strategy file into NinjaTrader with a manifest:
+
+```powershell
+.\.venv\Scripts\python.exe -m strategy_factory.compile_loop.installer `
+  --source .\strategy_factory\generated\ninjascript\EmaCrossFixedStopTarget.cs `
+  --overwrite
+```
+
+Normalize exported compiler errors:
+
+```powershell
+.\.venv\Scripts\python.exe -m strategy_factory.compile_loop.errors `
+  --latest-folder C:\ta_foundation\nt_compile_loop\compiler_errors `
+  --pattern *.csv
+```

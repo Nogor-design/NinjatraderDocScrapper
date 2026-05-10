@@ -89,6 +89,7 @@
         <div class="code-band">
           <div class="field-header">
             <label for="existing-code">Current Code</label>
+            <button id="review-code" class="secondary-btn">Review Code</button>
           </div>
           <textarea id="existing-code" class="code-editor" spellcheck="false" placeholder="Existing or generated NinjaScript code."></textarea>
         </div>
@@ -104,6 +105,64 @@
           </div>
           <div id="status" class="status">Ready.</div>
         </div>
+
+        <section class="compile-loop-band">
+          <div class="panel-header">
+            <h2>Batch Strategy Factory</h2>
+            <div class="toolbar-group">
+              <button id="batch-process" class="primary-btn">Process & Install Batch</button>
+            </div>
+          </div>
+          <div class="compile-controls">
+            <label class="path-field">
+              <span>Input Specs Folder</span>
+              <input id="batch-input-folder" placeholder="D:\path\to\specs">
+            </label>
+            <label class="path-field">
+              <span>Output Base Folder</span>
+              <input id="batch-output-folder" placeholder="D:\path\to\output">
+            </label>
+          </div>
+          <div id="batch-results" class="batch-report"></div>
+        </section>
+
+        <section class="compile-loop-band">
+          <div class="panel-header">
+            <h2>Compile Loop</h2>
+            <div class="toolbar-group">
+              <button id="compile-refresh" class="secondary-btn">Refresh Status</button>
+              <button id="compile-install" class="secondary-btn">Install Saved Code</button>
+            </div>
+          </div>
+          <div class="compile-controls">
+            <label class="path-field">
+              <span>Loop Root</span>
+              <input id="compile-root" value="C:\ta_foundation\nt_compile_loop">
+            </label>
+            <label class="path-field">
+              <span>NT Documents</span>
+              <input id="nt-documents-dir" value="C:\Users\Owner\Documents\NinjaTrader 8">
+            </label>
+            <label>
+              <span>Overwrite</span>
+              <input id="compile-overwrite" type="checkbox">
+            </label>
+          </div>
+          <div id="compile-loop-summary" class="compile-summary">
+            <div class="summary-item">
+              <span>Installed</span>
+              <strong>Not checked</strong>
+            </div>
+            <div class="summary-item">
+              <span>Errors</span>
+              <strong>Not checked</strong>
+            </div>
+            <div class="summary-item">
+              <span>Signature</span>
+              <strong>Not checked</strong>
+            </div>
+          </div>
+        </section>
 
         <div class="output-grid">
           <section class="output-panel">
@@ -121,6 +180,13 @@
             <div id="sources" class="sources"></div>
           </section>
         </div>
+
+        <section class="history-band">
+          <div class="panel-header">
+            <h2>Strategy Review</h2>
+          </div>
+          <pre id="strategy-review" class="answer"></pre>
+        </section>
 
         <section class="history-band">
           <div class="panel-header">

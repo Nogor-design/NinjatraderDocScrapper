@@ -3,6 +3,7 @@ using System;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.IO;
 using NinjaTrader.Cbi;
 using NinjaTrader.Data;
 using NinjaTrader.NinjaScript;
@@ -15,6 +16,7 @@ namespace NinjaTrader.NinjaScript.Strategies
     {
         private {{FAST_INDICATOR_TYPE}} fastMa;
         private {{SLOW_INDICATOR_TYPE}} slowMa;
+{{FILTER_FIELD_DECLARATIONS}}
         private bool riskLocked;
         private int priorTradesCount;
         private double priorTradesCumProfit;
@@ -57,6 +59,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 HardKillLoss = {{HARD_KILL_LOSS}};
                 StartTime = {{START_TIME}};
                 EndTime = {{END_TIME}};
+{{FILTER_DEFAULTS}}
             }
             else if (State == State.Configure)
             {
@@ -67,10 +70,48 @@ namespace NinjaTrader.NinjaScript.Strategies
             {
                 fastMa = {{FAST_INDICATOR_FACTORY}}(FastPeriod);
                 slowMa = {{SLOW_INDICATOR_FACTORY}}(SlowPeriod);
+{{FILTER_INITIALIZERS}}
             }
             else if (State == State.Realtime)
             {
                 ResetRiskSession();
+            }
+            else if (State == State.Terminated)
+            {
+                ExportBacktestResults();
+            }
+        }
+
+        private void ExportBacktestResults()
+        {
+            try
+            {
+                string root = @"C:\ta_foundation\nt_results";
+                if (!Directory.Exists(root))
+                    Directory.CreateDirectory(root);
+
+                string filename = string.Format("{0}_{1}_{2}.csv", Name, Instrument.FullName, DateTime.Now.ToString("yyyyMMdd_HHmmss"));
+                string path = Path.Combine(root, filename);
+                
+                var performance = SystemPerformance.AllTrades.TradesPerformance;
+                string[] lines = {
+                    "Metric,Value",
+                    string.Format("Strategy,{0}", Name),
+                    string.Format("Instrument,{0}", Instrument.FullName),
+                    string.Format("NetProfit,{0:F2}", performance.Currency.NetProfit),
+                    string.Format("GrossProfit,{0:F2}", performance.Currency.GrossProfit),
+                    string.Format("GrossLoss,{0:F2}", performance.Currency.GrossLoss),
+                    string.Format("ProfitFactor,{0:F2}", performance.ProfitFactor),
+                    string.Format("TotalTrades,{0}", SystemPerformance.AllTrades.Count),
+                    string.Format("PercentProfit,{0:F2}", performance.PercentProfit),
+                    string.Format("MaxDrawdown,{0:F2}", performance.Currency.Drawdown)
+                };
+                File.WriteAllLines(path, lines);
+                Print("Auto-saved backtest results to " + path);
+            }
+            catch (Exception ex)
+            {
+                Print("Failed to auto-save backtest results: " + ex.Message);
             }
         }
 
@@ -94,6 +135,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (!IsInTradeWindow())
                 return;
 
+{{FILTER_GUARDS}}
             if (tradesToday >= MaxTradesPerDay || GetSessionTradeCount() >= MaxTradesPerDay)
                 return;
 
@@ -202,7 +244,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         {
             Print(string.Format(
                 CultureInfo.InvariantCulture,
-                "SF_LEDGER|strategy_id={0}|timestamp={1:o}|event={2}|reason={3}|price_basis={4}|bar_index={5}|stop_ticks={6}|target_ticks={7}|quantity={8}",
+                "SF_LEDGER|strategy_id={0}|timestamp={1:o}|event={2}|reason={3}|price_basis={4}|bar_index={5}|stop_ticks={6}|target_ticks={7}|quantity={8}|fast_ma={9}|slow_ma={10}|close={11}",
                 Name,
                 Time[0],
                 EscapeLedgerValue(eventName),
@@ -211,7 +253,10 @@ namespace NinjaTrader.NinjaScript.Strategies
                 CurrentBar,
                 StopTicks,
                 TargetTicks,
-                Quantity));
+                Quantity,
+                fastMa == null ? 0 : fastMa[0],
+                slowMa == null ? 0 : slowMa[0],
+                Close[0]));
         }
 
         private string EscapeLedgerValue(string value)
@@ -286,5 +331,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         [Range(0, 235959)]
         [Display(Name = "End Time", Description = "HHmmss format", Order = 14, GroupName = "Session")]
         public int EndTime { get; set; }
+
+{{FILTER_PROPERTIES}}
     }
 }

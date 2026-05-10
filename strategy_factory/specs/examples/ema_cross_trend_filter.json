@@ -1,0 +1,85 @@
+{
+  "schema_version": "0.1",
+  "strategy": {
+    "id": "EmaCrossTrendFiltered",
+    "name": "EMA Cross Trend Filtered",
+    "hypothesis": "EMA crossover entries may behave better when filtered by the broader trend.",
+    "version": "0.1",
+    "source_prompt": "EMA 9/21 crossover, long only, 20 tick stop, 40 tick target, fixed 1 contract, only trade when close is above EMA 50."
+  },
+  "market": {
+    "instrument": "NQ",
+    "contract": "06-26",
+    "timeframe": "1m",
+    "tick_size": 0.25,
+    "tick_value": 5.0
+  },
+  "data": {
+    "calculation": "on_bar_close",
+    "lookback_bars": 50
+  },
+  "direction": "long",
+  "entries": [
+    {
+      "id": "entry_ema_9_21",
+      "type": "ema_cross",
+      "timing": "next_open",
+      "params": {
+        "fast_type": "ema",
+        "fast_period": 9,
+        "slow_type": "ema",
+        "slow_period": 21
+      }
+    }
+  ],
+  "filters": [
+    {
+      "type": "time_window",
+      "params": {
+        "session_start": "08:30:00",
+        "session_end": "11:30:00",
+        "timezone": "America/Denver"
+      }
+    },
+    {
+      "type": "moving_average_trend",
+      "params": {
+        "indicator": "ema",
+        "period": 50,
+        "condition": "price_above"
+      }
+    }
+  ],
+  "exits": {
+    "stop": {
+      "type": "fixed_ticks",
+      "ticks": 20
+    },
+    "target": {
+      "type": "fixed_ticks",
+      "ticks": 40
+    },
+    "max_hold_bars": 20,
+    "flatten_on_session_end": true
+  },
+  "sizing": {
+    "type": "fixed_contracts",
+    "contracts": 1,
+    "max_contracts": 1
+  },
+  "risk": {
+    "max_trades_per_day": 3,
+    "use_soft_pnl_lock": false,
+    "soft_profit_stop": 0.0,
+    "soft_loss_stop": 0.0,
+    "use_hard_kill": false,
+    "hard_kill_profit": 0.0,
+    "hard_kill_loss": 0.0
+  },
+  "execution": {
+    "ninjascript": {
+      "order_mode": "managed",
+      "calculate": "OnBarClose"
+    }
+  }
+}

@@ -29,7 +29,7 @@ def install_outputs(
         raise InstallError(f"Strategy template source does not exist: {template_source}")
 
     strategy_target = nt_dir / "bin" / "Custom" / "Strategies" / strategy_source.name
-    template_target_dir = nt_dir / "templates" / "Strategy" / strategy_name
+    template_target_dir = nt_dir / "templates" / "StrategyAnalyzer" / strategy_name
     template_target = template_target_dir / template_source.name
 
     _copy_file(strategy_source, strategy_target, overwrite=overwrite)

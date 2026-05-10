@@ -5,6 +5,7 @@ const state = {
   currentIterations: [],
   latestCompilerSignature: "",
   watchTimer: null,
+  compileLoopStatus: null,
 };
 
 const WATCH_INTERVAL_MS = 10000;
@@ -20,9 +21,21 @@ const el = {
   compilerFolderPath: document.getElementById("compiler-folder-path"),
   compilerPattern: document.getElementById("compiler-pattern"),
   compilerCsvPath: document.getElementById("compiler-csv-path"),
+  compileRoot: document.getElementById("compile-root"),
+  ntDocumentsDir: document.getElementById("nt-documents-dir"),
+  compileOverwrite: document.getElementById("compile-overwrite"),
+  compileRefresh: document.getElementById("compile-refresh"),
+  compileInstall: document.getElementById("compile-install"),
+  compileLoopSummary: document.getElementById("compile-loop-summary"),
+  batchInputFolder: document.getElementById("batch-input-folder"),
+  batchOutputFolder: document.getElementById("batch-output-folder"),
+  batchProcess: document.getElementById("batch-process"),
+  batchResults: document.getElementById("batch-results"),
   task: document.getElementById("task"),
   compilerErrors: document.getElementById("compiler-errors"),
   existingCode: document.getElementById("existing-code"),
+  reviewCode: document.getElementById("review-code"),
+  strategyReview: document.getElementById("strategy-review"),
   labelNotes: document.getElementById("label-notes"),
   generate: document.getElementById("generate"),
   saveCode: document.getElementById("save-code"),
@@ -66,6 +79,11 @@ function persistWorkspaceSettings() {
     compilerPattern: el.compilerPattern.value,
     compilerCsvPath: el.compilerCsvPath.value,
     autoWatchCsv: el.autoWatchCsv.checked,
+    compileRoot: el.compileRoot.value,
+    ntDocumentsDir: el.ntDocumentsDir.value,
+    compileOverwrite: el.compileOverwrite.checked,
+    batchInputFolder: el.batchInputFolder.value,
+    batchOutputFolder: el.batchOutputFolder.value,
   };
   window.localStorage.setItem("ninjatrader-iteration-lab-settings", JSON.stringify(payload));
 }
@@ -81,9 +99,41 @@ function restoreWorkspaceSettings() {
     el.compilerPattern.value = payload.compilerPattern || "*.csv";
     el.compilerCsvPath.value = payload.compilerCsvPath || "";
     el.autoWatchCsv.checked = Boolean(payload.autoWatchCsv);
+    el.compileRoot.value = payload.compileRoot || el.compileRoot.value;
+    el.ntDocumentsDir.value = payload.ntDocumentsDir || el.ntDocumentsDir.value;
+    el.compileOverwrite.checked = Boolean(payload.compileOverwrite);
+    el.batchInputFolder.value = payload.batchInputFolder || "";
+    el.batchOutputFolder.value = payload.batchOutputFolder || "";
   } catch (_error) {
     // Ignore malformed local settings and continue with defaults.
   }
+}
+
+function renderCompileLoopStatus(status) {
+  state.compileLoopStatus = status;
+  const manifest = status && status.latest_manifest;
+  const errors = status && status.latest_errors;
+  const installedText = manifest
+    ? `${manifest.target_path || ""}\n${manifest.installed_at || ""}`
+    : "No install manifest";
+  const errorText = errors
+    ? `${errors.count} errors\n${errors.path || ""}`
+    : "No compiler errors";
+  const signatureText = errors && errors.signature ? errors.signature : "No signature";
+  el.compileLoopSummary.innerHTML = `
+    <div class="summary-item">
+      <span>Installed</span>
+      <strong>${escapeHtml(installedText)}</strong>
+    </div>
+    <div class="summary-item">
+      <span>Errors</span>
+      <strong>${escapeHtml(errorText)}</strong>
+    </div>
+    <div class="summary-item">
+      <span>Signature</span>
+      <strong>${escapeHtml(signatureText)}</strong>
+    </div>
+  `;
 }
 
 function badgeClass(label) {
@@ -116,6 +166,7 @@ function renderIteration(iteration) {
 
   if (!iteration) {
     el.diffOutput.textContent = "";
+    el.strategyReview.textContent = "";
     return;
   }
 
@@ -135,6 +186,22 @@ function renderIteration(iteration) {
     el.sources.appendChild(div);
   });
   renderCompareOptions();
+}
+
+async function reviewCode() {
+  const code = el.existingCode.value;
+  const path = el.outputPath.value.trim();
+  if (!code.trim() && !path) {
+    setStatus("Load code or enter a save path to review.");
+    return;
+  }
+  setStatus("Reviewing strategy...");
+  const result = await api("/api/review", {
+    method: "POST",
+    body: JSON.stringify({ code, path }),
+  });
+  el.strategyReview.textContent = result.markdown || "";
+  setStatus("Strategy review updated.");
 }
 
 function renderHistory() {
@@ -298,6 +365,43 @@ async function saveCode() {
   setStatus(`Saved code to ${updated.output_path}.`);
 }
 
+async function refreshCompileLoopStatus(options = {}) {
+  const root = encodeURIComponent(el.compileRoot.value.trim());
+  const pattern = encodeURIComponent(el.compilerPattern.value.trim() || "*.csv");
+  const query = root ? `?root=${root}&pattern=${pattern}` : `?pattern=${pattern}`;
+  const status = await api(`/api/compile-loop/status${query}`);
+  renderCompileLoopStatus(status);
+  persistWorkspaceSettings();
+  if (!options.quiet) {
+    const count = status.latest_errors ? status.latest_errors.count : 0;
+    setStatus(`Compile loop status refreshed. Latest errors: ${count}.`);
+  }
+  return status;
+}
+
+async function installSavedCode() {
+  const source = el.outputPath.value.trim();
+  if (!source) {
+    setStatus("Enter a Save To path for the .cs file before installing.");
+    return;
+  }
+  setStatus("Installing saved strategy file...");
+  const result = await api("/api/compile-loop/install", {
+    method: "POST",
+    body: JSON.stringify({
+      source,
+      compile_root: el.compileRoot.value.trim(),
+      nt_documents_dir: el.ntDocumentsDir.value.trim(),
+      overwrite: el.compileOverwrite.checked,
+      iteration_id: state.currentIterationId ? String(state.currentIterationId) : "",
+      notes: el.labelNotes.value,
+    }),
+  });
+  await refreshCompileLoopStatus({ quiet: true });
+  persistWorkspaceSettings();
+  setStatus(`Installed ${result.manifest.target_path}.`);
+}
+
 async function loadCompilerCsv() {
   if (!el.compilerCsvPath.value.trim()) {
     setStatus("Enter a compiler CSV path first.");
@@ -433,6 +537,39 @@ function handleWatchToggle() {
   setStatus(el.autoWatchCsv.checked ? "Auto-watch enabled for latest compiler CSV." : "Auto-watch stopped.");
 }
 
+async function batchProcess() {
+  const input_folder = el.batchInputFolder.value.trim();
+  const output_base_dir = el.batchOutputFolder.value.trim();
+  if (!input_folder || !output_base_dir) {
+    setStatus("Enter input and output folders for batch processing.");
+    return;
+  }
+  setStatus("Running batch process and install...");
+  const data = await api("/api/batch/process", {
+    method: "POST",
+    body: JSON.stringify({
+      input_folder,
+      output_base_dir,
+      nt_documents_dir: el.ntDocumentsDir.value.trim(),
+      overwrite: el.compileOverwrite.checked,
+    }),
+  });
+  
+  const success = data.results.filter(r => r.status === "success").length;
+  el.batchResults.innerHTML = `
+    <div class="summary-item">
+      <span>Processed</span>
+      <strong>${data.results.length}</strong>
+    </div>
+    <div class="summary-item">
+      <span>Success</span>
+      <strong>${success}</strong>
+    </div>
+  `;
+  persistWorkspaceSettings();
+  setStatus(`Batch complete. ${success} strategies processed and installed.`);
+}
+
 async function viewDiff() {
   if (!state.currentIterationId) {
     setStatus("Load an iteration first.");
@@ -490,6 +627,11 @@ function escapeHtml(value) {
 }
 
 el.generate.addEventListener("click", () => generate().catch((error) => setStatus(error.message)));
+el.reviewCode.addEventListener("click", () => reviewCode().catch((error) => setStatus(error.message)));
+el.compileRefresh.addEventListener("click", () =>
+  refreshCompileLoopStatus().catch((error) => setStatus(error.message))
+);
+el.compileInstall.addEventListener("click", () => installSavedCode().catch((error) => setStatus(error.message)));
 el.markGood.addEventListener("click", () => markIteration("good").catch((error) => setStatus(error.message)));
 el.markBad.addEventListener("click", () => markIteration("bad").catch((error) => setStatus(error.message)));
 el.saveCode.addEventListener("click", () => saveCode().catch((error) => setStatus(error.message)));
@@ -502,9 +644,13 @@ el.repairCsv.addEventListener("click", () => repairFromCsv().catch((error) => se
 el.viewDiff.addEventListener("click", () => viewDiff().catch((error) => setStatus(error.message)));
 el.exportTraining.addEventListener("click", () => exportTraining().catch((error) => setStatus(error.message)));
 el.newSession.addEventListener("click", () => createSession().catch((error) => setStatus(error.message)));
+el.batchProcess.addEventListener("click", () => batchProcess().catch((error) => setStatus(error.message)));
 el.compilerFolderPath.addEventListener("change", persistWorkspaceSettings);
 el.compilerPattern.addEventListener("change", persistWorkspaceSettings);
 el.compilerCsvPath.addEventListener("change", persistWorkspaceSettings);
+el.compileRoot.addEventListener("change", persistWorkspaceSettings);
+el.ntDocumentsDir.addEventListener("change", persistWorkspaceSettings);
+el.compileOverwrite.addEventListener("change", persistWorkspaceSettings);
 el.autoWatchCsv.addEventListener("change", handleWatchToggle);
 
 restoreWorkspaceSettings();

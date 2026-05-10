@@ -1,8 +1,8 @@
 import argparse
-import csv
 import difflib
 import json
 import sqlite3
+from dataclasses import asdict
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,8 +12,20 @@ from urllib.parse import parse_qs, urlparse
 
 import requests
 
-from generate_ninjascript import SYSTEM_PROMPT, build_user_prompt, extract_code_block, retrieve
+from generate_ninjascript import (
+    SYSTEM_PROMPT,
+    build_code_review,
+    build_local_context,
+    build_user_prompt,
+    extract_code_block,
+    retrieve,
+)
 from ollama_rag import DEFAULT_OLLAMA_URL, ollama_chat
+from strategy_factory.compile_loop.errors import find_latest_compiler_error_file, normalize_compiler_errors
+from strategy_factory.compile_loop.installer import install_strategy_file
+from strategy_factory.compile_loop.paths import DEFAULT_COMPILE_LOOP_ROOT, ensure_compile_loop
+from strategy_factory.install_ninjatrader_outputs import DEFAULT_NT_DOCUMENTS
+from strategy_factory.review import review_strategy_code, review_strategy_file, review_to_markdown
 
 
 ROOT = Path(__file__).resolve().parent
@@ -199,31 +211,27 @@ def load_compiler_errors_csv(csv_path_text: str) -> dict:
     if not csv_path.exists():
         raise FileNotFoundError(f"Compiler CSV not found: {csv_path}")
 
-    rows = []
-    with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            if not any((value or "").strip() for value in row.values()):
-                continue
-            file_name = (row.get("NinjaScript File") or row.get("File") or "").strip()
-            error = (row.get("Error") or "").strip()
-            code = (row.get("Code") or "").strip()
-            line = (row.get("Line") or "").strip()
-            column = (row.get("Column") or "").strip()
-            formatted = f"{file_name}({line},{column}) {code}: {error}".strip()
-            rows.append(
-                {
-                    "file": file_name,
-                    "error": error,
-                    "code": code,
-                    "line": line,
-                    "column": column,
-                    "formatted": formatted,
-                }
-            )
-
-    text = "\n".join(item["formatted"] for item in rows)
-    return {"path": str(csv_path), "count": len(rows), "rows": rows, "text": text}
+    bundle = normalize_compiler_errors(csv_path)
+    rows = [
+        {
+            "file": error.file,
+            "error": error.message,
+            "code": error.code,
+            "line": "" if error.line is None else str(error.line),
+            "column": "" if error.column is None else str(error.column),
+            "formatted": error.formatted(),
+            "raw": error.raw,
+        }
+        for error in bundle.errors
+    ]
+    return {
+        "path": bundle.path,
+        "count": bundle.count,
+        "rows": rows,
+        "text": bundle.text,
+        "signature": bundle.signature,
+        "parsed_at": bundle.parsed_at,
+    }
 
 
 def find_latest_compiler_csv(folder_path_text: str, pattern: str = "*.csv") -> dict:
@@ -445,6 +453,57 @@ def save_code_file(iteration_id: int, output_path: str, code_override: str = "")
     return get_iteration(iteration_id)
 
 
+def compile_loop_status(root_path_text: str = "", pattern: str = "*.csv") -> dict:
+    paths = ensure_compile_loop(root_path_text or DEFAULT_COMPILE_LOOP_ROOT)
+    manifests = sorted(paths.installed.glob("*.install.json"), key=lambda item: (item.stat().st_mtime, item.name))
+    latest_manifest = None
+    if manifests:
+        latest_manifest = json.loads(manifests[-1].read_text(encoding="utf-8"))
+
+    latest_errors = None
+    try:
+        latest_error_path = find_latest_compiler_error_file(paths.compiler_errors, pattern)
+        latest_errors = normalize_compiler_errors(latest_error_path).as_serializable_dict()
+    except (FileNotFoundError, NotADirectoryError):
+        latest_errors = None
+
+    return {
+        "paths": paths.as_serializable_dict(),
+        "latest_manifest": latest_manifest,
+        "latest_errors": latest_errors,
+    }
+
+
+def compile_loop_install_payload(payload: dict) -> dict:
+    source = payload.get("source", "").strip()
+    if not source:
+        raise ValueError("source is required")
+    manifest = install_strategy_file(
+        resolve_user_path(source),
+        compile_root=payload.get("compile_root") or DEFAULT_COMPILE_LOOP_ROOT,
+        nt_documents_dir=payload.get("nt_documents_dir") or DEFAULT_NT_DOCUMENTS,
+        overwrite=bool(payload.get("overwrite", False)),
+        iteration_id=str(payload.get("iteration_id", "")),
+        notes=str(payload.get("notes", "")),
+    )
+    return {"manifest": manifest.as_serializable_dict()}
+
+
+def review_strategy_payload(payload: dict) -> dict:
+    code = payload.get("code", "")
+    path_text = payload.get("path", "").strip()
+    if code.strip():
+        review = review_strategy_code(code, path=path_text or "(current editor)")
+    elif path_text:
+        review = review_strategy_file(resolve_user_path(path_text))
+    else:
+        raise ValueError("Provide code or path for review.")
+    return {
+        "review": asdict(review),
+        "markdown": review_to_markdown(review),
+    }
+
+
 def run_generation(payload: dict) -> dict:
     session_id = int(payload["session_id"])
     task = payload.get("task", "").strip()
@@ -457,6 +516,7 @@ def run_generation(payload: dict) -> dict:
     model = payload.get("model", "qwen3-coder:30b")
     embed_model = payload.get("embed_model", "nomic-embed-text")
     top_k = int(payload.get("top_k", 8))
+    local_top_k = int(payload.get("local_top_k", 6))
     temperature = float(payload.get("temperature", 0.1))
     output_path = payload.get("output_path", "").strip()
     ollama_url = payload.get("ollama_url", DEFAULT_OLLAMA_URL)
@@ -475,7 +535,14 @@ def run_generation(payload: dict) -> dict:
         part for part in [task, existing_code[:3000], compiler_errors[:3000]] if part.strip()
     )
     results = retrieve(retrieve_args, query_text)
-    rag_message = build_user_prompt(task, results, existing_code, compiler_errors)
+    rag_message = build_user_prompt(
+        task,
+        results,
+        existing_code,
+        compiler_errors,
+        local_context=build_local_context(query_text, top_k=local_top_k),
+        code_review=build_code_review(existing_code, path=output_path),
+    )
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     messages.extend(session_history_messages(session_id))
@@ -545,6 +612,24 @@ def run_generation(payload: dict) -> dict:
     return get_iteration(iteration_id)
 
 
+from batch_factory_run import batch_process_specs
+
+
+def batch_process_payload(payload: dict) -> dict:
+    input_folder = payload.get("input_folder", "").strip()
+    output_base_dir = payload.get("output_base_dir", "").strip()
+    if not input_folder or not output_base_dir:
+        raise ValueError("input_folder and output_base_dir are required")
+    
+    results = batch_process_specs(
+        resolve_user_path(input_folder),
+        resolve_user_path(output_base_dir),
+        nt_documents_dir=payload.get("nt_documents_dir") or DEFAULT_NT_DOCUMENTS,
+        overwrite=bool(payload.get("overwrite", False))
+    )
+    return {"results": results}
+
+
 class RequestHandler(BaseHTTPRequestHandler):
     server_version = "NinjaTraderGUI/1.0"
 
@@ -585,6 +670,14 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return self.write_json(find_latest_compiler_csv(folder_path, pattern))
             except Exception as exc:
                 return self.write_error_json(exc)
+        if parsed.path == "/api/compile-loop/status":
+            query = parse_qs(parsed.query)
+            root_path = query.get("root", [""])[0]
+            pattern = query.get("pattern", ["*.csv"])[0]
+            try:
+                return self.write_json(compile_loop_status(root_path, pattern))
+            except Exception as exc:
+                return self.write_error_json(exc)
         if parsed.path.startswith("/api/iterations/") and parsed.path.endswith("/diff"):
             try:
                 iteration_id = int(parsed.path.split("/")[-2])
@@ -602,8 +695,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/sessions":
                 title = payload.get("title", "")
                 return self.write_json(create_session(title), status=HTTPStatus.CREATED)
+            if parsed.path == "/api/batch/process":
+                return self.write_json(batch_process_payload(payload), status=HTTPStatus.OK)
             if parsed.path == "/api/export":
                 return self.write_json(export_training_bundle(), status=HTTPStatus.CREATED)
+            if parsed.path == "/api/review":
+                return self.write_json(review_strategy_payload(payload), status=HTTPStatus.OK)
+            if parsed.path == "/api/compile-loop/install":
+                return self.write_json(compile_loop_install_payload(payload), status=HTTPStatus.CREATED)
             if parsed.path.endswith("/generate") and parsed.path.startswith("/api/sessions/"):
                 session_id = int(parsed.path.split("/")[-2])
                 payload["session_id"] = session_id

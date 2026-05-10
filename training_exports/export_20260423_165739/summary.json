@@ -1,0 +1,11 @@
+{
+  "exported_at": "2026-04-23T16:57:39",
+  "export_dir": "D:\\Backup\\projects\\PythonProject\\NinjatraderDocScrapper\\training_exports\\export_20260423_165739",
+  "good_examples": 1,
+  "bad_examples": 2,
+  "total_labeled": 3,
+  "files": {
+    "good_sft": "D:\\Backup\\projects\\PythonProject\\NinjatraderDocScrapper\\training_exports\\export_20260423_165739\\good_sft.jsonl",
+    "review_corpus": "D:\\Backup\\projects\\PythonProject\\NinjatraderDocScrapper\\training_exports\\export_20260423_165739\\review_corpus.jsonl"
+  }
+}

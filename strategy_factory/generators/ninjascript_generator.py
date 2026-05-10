@@ -30,6 +30,14 @@ def generate_ninjascript_strategy(spec: dict[str, Any]) -> str:
     fast_type = str(params.get("fast_type", "ema")).lower()
     slow_type = str(params.get("slow_type", "ema")).lower()
     risk = normalized["risk"]
+    trend_filters = _trend_filters(normalized.get("filters", []))
+    _validate_supported_filters(normalized.get("filters", []))
+    bars_required = max(
+        int(params["fast_period"]),
+        int(params["slow_period"]),
+        int(normalized["data"]["lookback_bars"]),
+        *[int(item["params"].get("period", 50)) for item in trend_filters],
+    )
     replacements = {
         "CLASS_NAME": _class_name(normalized["strategy"]["id"]),
         "DESCRIPTION": _escape_csharp_string(normalized["strategy"].get("hypothesis", "")),
@@ -51,8 +59,13 @@ def generate_ninjascript_strategy(spec: dict[str, Any]) -> str:
         "HARD_KILL_LOSS": _csharp_decimal(float(risk.get("hard_kill_loss", 0.0))),
         "START_TIME": _session_time(normalized.get("filters", []), "session_start", "083000"),
         "END_TIME": _session_time(normalized.get("filters", []), "session_end", "113000"),
-        "BARS_REQUIRED": str(max(int(params["fast_period"]), int(params["slow_period"]), int(normalized["data"]["lookback_bars"]))),
+        "BARS_REQUIRED": str(bars_required),
         "ENTRY_LOGIC": _entry_logic(normalized["direction"], _escape_csharp_string(entry["id"])),
+        "FILTER_FIELD_DECLARATIONS": _filter_field_declarations(trend_filters),
+        "FILTER_DEFAULTS": _filter_defaults(trend_filters),
+        "FILTER_INITIALIZERS": _filter_initializers(trend_filters),
+        "FILTER_GUARDS": _filter_guards(trend_filters),
+        "FILTER_PROPERTIES": _filter_properties(trend_filters),
     }
 
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
@@ -103,6 +116,88 @@ def _session_time(filters: list[dict[str, Any]], key: str, default: str) -> str:
         value = str((item.get("params") or {}).get(key, default))
         return _to_hhmmss_int(value)
     return _to_hhmmss_int(default)
+
+
+def _validate_supported_filters(filters: list[dict[str, Any]]) -> None:
+    supported = {"time_window", "moving_average_trend", "trend"}
+    for item in filters:
+        filter_type = str(item.get("type", ""))
+        if filter_type not in supported:
+            raise NinjaScriptGenerationError(f"NinjaScript v1 generator does not support filter type: {filter_type}")
+        if filter_type in {"moving_average_trend", "trend"}:
+            params = item.get("params") or {}
+            indicator = str(params.get("indicator", params.get("ma_type", "ema"))).lower()
+            _indicator_type(indicator)
+            condition = str(params.get("condition", "price_above")).lower()
+            if condition not in {"price_above", "price_below"}:
+                raise NinjaScriptGenerationError(
+                    f"NinjaScript v1 trend filter supports only price_above/price_below, got: {condition}"
+                )
+
+
+def _trend_filters(filters: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [item for item in filters if item.get("type") in {"moving_average_trend", "trend"}]
+
+
+def _filter_field_declarations(filters: list[dict[str, Any]]) -> str:
+    lines = []
+    for index, item in enumerate(filters, start=1):
+        indicator = _trend_indicator(item)
+        lines.append(f"        private {_indicator_type(indicator)} trendMa{index};")
+    return "\n".join(lines)
+
+
+def _filter_defaults(filters: list[dict[str, Any]]) -> str:
+    lines = []
+    for index, item in enumerate(filters, start=1):
+        period = int((item.get("params") or {}).get("period", 50))
+        lines.append(f"                TrendPeriod{index} = {period};")
+    return "\n".join(lines)
+
+
+def _filter_initializers(filters: list[dict[str, Any]]) -> str:
+    lines = []
+    for index, item in enumerate(filters, start=1):
+        indicator = _trend_indicator(item)
+        lines.append(f"                trendMa{index} = {_indicator_factory(indicator)}(TrendPeriod{index});")
+    return "\n".join(lines)
+
+
+def _filter_guards(filters: list[dict[str, Any]]) -> str:
+    lines = []
+    for index, item in enumerate(filters, start=1):
+        condition = str((item.get("params") or {}).get("condition", "price_above")).lower()
+        if condition == "price_above":
+            lines.append(
+                f"""            if (Close[0] <= trendMa{index}[0])
+                return;"""
+            )
+        elif condition == "price_below":
+            lines.append(
+                f"""            if (Close[0] >= trendMa{index}[0])
+                return;"""
+            )
+        else:
+            raise NinjaScriptGenerationError(f"Unsupported trend filter condition: {condition}")
+    return "\n\n".join(lines)
+
+
+def _filter_properties(filters: list[dict[str, Any]]) -> str:
+    lines = []
+    for index, item in enumerate(filters, start=1):
+        indicator = _trend_indicator(item).upper()
+        lines.append(
+            f"""        [NinjaScriptProperty]
+        [Range(1, int.MaxValue)]
+        [Display(Name = "{indicator} Trend Period {index}", Order = {20 + index}, GroupName = "Filters")]
+        public int TrendPeriod{index} {{ get; set; }}"""
+        )
+    return "\n\n".join(lines)
+
+
+def _trend_indicator(filter_item: dict[str, Any]) -> str:
+    params = filter_item.get("params") or {}
+    return str(params.get("indicator", params.get("ma_type", "ema"))).lower()
 
 
 def _to_hhmmss_int(value: str) -> str:
